@@ -1,26 +1,76 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+@theme {
+  --color-primary: oklch(0.65 0.15 270);
+  --color-primary-foreground: oklch(0.98 0.02 270);
+  --color-secondary: oklch(0.96 0.01 270);
+  --color-secondary-foreground: oklch(0.45 0.015 270);
+  --color-background: oklch(1 0 0);
+  --color-foreground: oklch(0.15 0.01 270);
+  --color-card: oklch(1 0 0);
+  --color-card-foreground: oklch(0.15 0.01 270);
+  --color-popover: oklch(1 0 0);
+  --color-popover-foreground: oklch(0.15 0.01 270);
+  --color-muted: oklch(0.96 0.01 270);
+  --color-muted-foreground: oklch(0.55 0.015 270);
+  --color-accent: oklch(0.96 0.01 270);
+  --color-accent-foreground: oklch(0.15 0.01 270);
+  --color-destructive: oklch(0.7 0.15 15);
+  --color-destructive-foreground: oklch(0.98 0.02 15);
+  --color-border: oklch(0.91 0.01 270);
+  --color-input: oklch(0.91 0.01 270);
+  --color-ring: oklch(0.65 0.15 270);
+  
+  --radius: 0.5rem;
+  
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --color-background: oklch(0.09 0.01 270);
+    --color-foreground: oklch(0.98 0.02 270);
+    --color-card: oklch(0.09 0.01 270);
+    --color-card-foreground: oklch(0.98 0.02 270);
+    --color-popover: oklch(0.09 0.01 270);
+    --color-popover-foreground: oklch(0.98 0.02 270);
+    --color-primary: oklch(0.98 0.02 270);
+    --color-primary-foreground: oklch(0.09 0.01 270);
+    --color-secondary: oklch(0.18 0.02 270);
+    --color-secondary-foreground: oklch(0.98 0.02 270);
+    --color-muted: oklch(0.18 0.02 270);
+    --color-muted-foreground: oklch(0.65 0.02 270);
+    --color-accent: oklch(0.18 0.02 270);
+    --color-accent-foreground: oklch(0.98 0.02 270);
+    --color-destructive: oklch(0.35 0.15 15);
+    --color-destructive-foreground: oklch(0.98 0.02 15);
+    --color-border: oklch(0.18 0.02 270);
+    --color-input: oklch(0.18 0.02 270);
+    --color-ring: oklch(0.83 0.02 270);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@keyframes accordion-down {
+  from { height: 0; }
+  to { height: var(--radix-accordion-content-height); }
+}
+
+@keyframes accordion-up {
+  from { height: var(--radix-accordion-content-height); }
+  to { height: 0; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Custom styles for financial app */
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
