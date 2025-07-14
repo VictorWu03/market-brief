@@ -34,3 +34,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Excluded files (not for public repo)
+.env.example
+DEPLOYMENT.md
+SECURITY.md
