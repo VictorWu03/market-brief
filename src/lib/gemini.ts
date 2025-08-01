@@ -1,20 +1,214 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
+// **TEMPORARY: Set to true to disable all Gemini API calls during local testing**
+const LOCAL_TESTING_DISABLE_GEMINI = true; // Change to false to re-enable
+
 const apiKey = process.env.GOOGLE_AI_API_KEY;
 
 let genAI: GoogleGenerativeAI | null = null;
 let model: any = null;
 
-if (apiKey) {
+// Only initialize if not in local testing mode and API key exists
+if (apiKey && !LOCAL_TESTING_DISABLE_GEMINI) {
   genAI = new GoogleGenerativeAI(apiKey);
   model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 }
 
 export { model };
 
-// Enhanced caching for sentiment analysis with content-based keys
+// **NEW: Usage tracking for monitoring API calls**
+interface UsageStats {
+  totalCalls: number;
+  successfulCalls: number;
+  failedCalls: number;
+  lastCallTime: number;
+  quotaErrors: number;
+  rateLimitErrors: number;
+  estimatedTokensUsed: number;
+  todaysCalls: number;
+  lastResetDate: string;
+}
+
+// eslint-disable-next-line prefer-const
+let usageStats: UsageStats = {
+  totalCalls: 0,
+  successfulCalls: 0,
+  failedCalls: 0,
+  lastCallTime: 0,
+  quotaErrors: 0,
+  rateLimitErrors: 0,
+  estimatedTokensUsed: 0,
+  todaysCalls: 0,
+  lastResetDate: new Date().toDateString()
+};
+
+// Reset daily counters if it's a new day (Pacific Time - when Gemini quotas reset)
+function checkDailyReset() {
+  const now = new Date();
+  const pacificTime = new Date(now.toLocaleString("en-US", {timeZone: "America/Los_Angeles"}));
+  const todayPacific = pacificTime.toDateString();
+  
+  if (usageStats.lastResetDate !== todayPacific) {
+    console.log(`📅 Daily reset detected (Pacific Time): ${todayPacific}`);
+    usageStats.todaysCalls = 0;
+    usageStats.lastResetDate = todayPacific;
+  }
+}
+
+// Track API call before making request
+function trackApiCall() {
+  checkDailyReset();
+  usageStats.totalCalls++;
+  usageStats.todaysCalls++;
+  usageStats.lastCallTime = Date.now();
+}
+
+// Track API call result
+function trackApiResult(success: boolean, error?: any, estimatedTokens: number = 0) {
+  if (success) {
+    usageStats.successfulCalls++;
+    usageStats.estimatedTokensUsed += estimatedTokens;
+  } else {
+    usageStats.failedCalls++;
+    
+    // Track specific error types
+    if (error?.message?.includes('quota') || error?.status === 429) {
+      usageStats.quotaErrors++;
+    } else if (error?.message?.includes('rate limit') || error?.message?.includes('Too Many Requests')) {
+      usageStats.rateLimitErrors++;
+    }
+  }
+}
+
+// Get current usage statistics
+export function getUsageStats(): UsageStats & { 
+  dailyQuotaUsed: string;
+  quotaRemaining: string;
+  nextResetTime: string;
+  cacheStats: {
+    bulkCacheSize: number;
+    articleCacheSize: number;
+    totalCachedArticles: number;
+    cacheHitRate: string;
+  };
+} {
+  checkDailyReset();
+  
+  const dailyQuotaLimit = 50; // Free tier limit
+  const quotaUsedPercent = (usageStats.todaysCalls / dailyQuotaLimit * 100).toFixed(1);
+  const quotaRemaining = Math.max(0, dailyQuotaLimit - usageStats.todaysCalls);
+  
+  // Calculate next reset time (midnight Pacific)
+  const now = new Date();
+  const pacificTime = new Date(now.toLocaleString("en-US", {timeZone: "America/Los_Angeles"}));
+  const tomorrow = new Date(pacificTime);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(0, 0, 0, 0);
+  
+  // Calculate cache statistics
+  const bulkCacheSize = sentimentCache.size;
+  const articleCacheSize = individualArticleCache.size;
+  const cacheHitRate = usageStats.totalCalls > 0 
+    ? ((usageStats.successfulCalls / usageStats.totalCalls) * 100).toFixed(1)
+    : '0.0';
+  
+  return {
+    ...usageStats,
+    dailyQuotaUsed: `${usageStats.todaysCalls}/${dailyQuotaLimit} (${quotaUsedPercent}%)`,
+    quotaRemaining: `${quotaRemaining} requests remaining`,
+    nextResetTime: tomorrow.toLocaleString("en-US", {
+      timeZone: "America/Los_Angeles",
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short'
+    }),
+    cacheStats: {
+      bulkCacheSize,
+      articleCacheSize,
+      totalCachedArticles: articleCacheSize,
+      cacheHitRate: `${cacheHitRate}%`
+    }
+  };
+}
+
+// Print usage stats to console
+export function logUsageStats() {
+  const stats = getUsageStats();
+  console.log(`\n📊 GEMINI API USAGE STATS:`);
+  console.log(`   📅 Today's Calls: ${stats.dailyQuotaUsed}`);
+  console.log(`   📈 Total Calls: ${stats.totalCalls} (${stats.successfulCalls} success, ${stats.failedCalls} failed)`);
+  console.log(`   ⚠️  Quota Errors: ${stats.quotaErrors}`);
+  console.log(`   🚫 Rate Limit Errors: ${stats.rateLimitErrors}`);
+  console.log(`   🔄 Next Reset: ${stats.nextResetTime}`);
+  console.log(`   💾 Cache Stats: ${stats.cacheStats.articleCacheSize} articles cached, Hit Rate: ${stats.cacheStats.cacheHitRate}`);
+  console.log(`   📊 Status: ${LOCAL_TESTING_DISABLE_GEMINI ? '🚫 DISABLED for testing' : '✅ ACTIVE'}`);
+  console.log(`   🔑 API Key: ${apiKey ? '✅ Configured' : '❌ Missing'}\n`);
+}
+
+// **TESTING UTILITIES: Cache management for debugging**
+export function clearAllCaches() {
+  const beforeArticles = individualArticleCache.size;
+  const beforeBulk = sentimentCache.size;
+  
+  individualArticleCache.clear();
+  sentimentCache.clear();
+  
+  console.log(`🧹 CACHE CLEARED:`);
+  console.log(`   📰 Article Cache: ${beforeArticles} → 0`);
+  console.log(`   📦 Bulk Cache: ${beforeBulk} → 0`);
+  console.log(`   ✅ All sentiment caches cleared for testing`);
+}
+
+export function getCacheInfo() {
+  return {
+    articleCache: {
+      size: individualArticleCache.size,
+      entries: Array.from(individualArticleCache.entries()).map(([key, value]) => ({
+        key: key.substring(0, 20) + '...',
+        age: Math.round((Date.now() - value.timestamp) / 1000),
+        sentiment: value.sentiment.sentiment,
+        confidence: value.sentiment.confidence
+      }))
+    },
+    bulkCache: {
+      size: sentimentCache.size,
+      entries: Array.from(sentimentCache.entries()).map(([key, value]) => ({
+        key: key.substring(0, 20) + '...',
+        age: Math.round((Date.now() - value.timestamp) / 1000),
+        dataLength: value.data.length
+      }))
+    }
+  };
+}
+
+export function logCacheDetails() {
+  const info = getCacheInfo();
+  console.log(`\n💾 DETAILED CACHE INFORMATION:`);
+  console.log(`   📰 Article Cache (${info.articleCache.size} entries):`);
+  info.articleCache.entries.forEach((entry, i) => {
+    console.log(`     ${i + 1}. ${entry.key} | ${entry.sentiment} (${(entry.confidence * 100).toFixed(1)}%) | ${entry.age}s old`);
+  });
+  console.log(`   📦 Bulk Cache (${info.bulkCache.size} entries):`);
+  info.bulkCache.entries.forEach((entry, i) => {
+    console.log(`     ${i + 1}. ${entry.key} | ${entry.dataLength} results | ${entry.age}s old`);
+  });
+  console.log(``);
+}
+
+// Enhanced caching for sentiment analysis with article-level persistence
 const sentimentCache = new Map<string, { timestamp: number; data: any }>();
-const SENTIMENT_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes (extended to reduce API calls)
+const individualArticleCache = new Map<string, { 
+  timestamp: number; 
+  sentiment: {
+    sentiment: 'positive' | 'negative' | 'neutral';
+    confidence: number;
+    summary: string;
+  }
+}>();
+const SENTIMENT_CACHE_DURATION = 60 * 60 * 1000; // 60 minutes (extended to reduce API calls)
+const ARTICLE_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours for individual articles
 
 // Cleanup old cache entries to prevent memory leaks
 function cleanupSentimentCache() {
@@ -22,6 +216,13 @@ function cleanupSentimentCache() {
   for (const [key, value] of sentimentCache.entries()) {
     if (now - value.timestamp > SENTIMENT_CACHE_DURATION) {
       sentimentCache.delete(key);
+    }
+  }
+  
+  // Cleanup individual article cache
+  for (const [key, value] of individualArticleCache.entries()) {
+    if (now - value.timestamp > ARTICLE_CACHE_DURATION) {
+      individualArticleCache.delete(key);
     }
   }
 }
@@ -42,8 +243,84 @@ function generateContentHash(articles: Array<{ title: string; summary: string }>
   return `sentiment_${hash}`;
 }
 
+// Generate cache key for individual article
+function generateArticleHash(article: { title: string; summary: string }): string {
+  const content = `${article.title}|${article.summary}`;
+  let hash = 0;
+  for (let i = 0; i < content.length; i++) {
+    const char = content.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return `article_${hash}`;
+}
+
+// Check for cached individual article sentiments
+function getCachedArticleSentiments(articles: Array<{ id: string; title: string; summary: string }>): {
+  cachedResults: Array<{
+    sentiment: 'positive' | 'negative' | 'neutral';
+    confidence: number;
+    summary: string;
+  } | null>;
+  uncachedArticles: Array<{ index: number; article: { id: string; title: string; summary: string } }>;
+  cacheStats: { hits: number; misses: number; };
+} {
+  const now = Date.now();
+  const cachedResults: Array<{
+    sentiment: 'positive' | 'negative' | 'neutral';
+    confidence: number;
+    summary: string;
+  } | null> = [];
+  const uncachedArticles: Array<{ index: number; article: { id: string; title: string; summary: string } }> = [];
+  let hits = 0;
+  let misses = 0;
+
+  articles.forEach((article, index) => {
+    const articleKey = generateArticleHash(article);
+    const cached = individualArticleCache.get(articleKey);
+    
+    if (cached && (now - cached.timestamp) < ARTICLE_CACHE_DURATION) {
+      cachedResults[index] = cached.sentiment;
+      hits++;
+    } else {
+      cachedResults[index] = null;
+      uncachedArticles.push({ index, article });
+      misses++;
+    }
+  });
+
+  return { cachedResults, uncachedArticles, cacheStats: { hits, misses } };
+}
+
+// Store individual article sentiments in cache
+function cacheArticleSentiments(
+  articles: Array<{ id: string; title: string; summary: string }>,
+  sentiments: Array<{
+    sentiment: 'positive' | 'negative' | 'neutral';
+    confidence: number;
+    summary: string;
+  }>
+) {
+  const now = Date.now();
+  
+  articles.forEach((article, index) => {
+    const articleKey = generateArticleHash(article);
+    const sentiment = sentiments[index];
+    
+    if (sentiment) {
+      individualArticleCache.set(articleKey, {
+        timestamp: now,
+        sentiment
+      });
+    }
+  });
+}
+
 export async function generateFinancialAnalysis(prompt: string): Promise<string> {
   if (!model) {
+    if (LOCAL_TESTING_DISABLE_GEMINI) {
+      return 'Gemini API disabled for local testing. Set LOCAL_TESTING_DISABLE_GEMINI to false to re-enable.';
+    }
     throw new Error('Google AI API key not configured');
   }
   
@@ -66,7 +343,9 @@ export async function analyzeSentiment(newsText: string): Promise<{
     return {
       sentiment: 'neutral',
       confidence: 0,
-      summary: 'API key not configured'
+      summary: LOCAL_TESTING_DISABLE_GEMINI 
+        ? 'Gemini API disabled for local testing - using neutral sentiment' 
+        : 'API key not configured'
     };
   }
   const prompt = `
@@ -113,86 +392,204 @@ export async function analyzeBulkSentiment(articles: Array<{
   confidence: number;
   summary: string;
 }>> {
-  if (!model) {
-    return articles.map(() => ({
-      sentiment: 'neutral' as const,
-      confidence: 0,
-      summary: 'API key not configured'
-    }));
-  }
-
-  // Check content-based cache
-  const contentKey = generateContentHash(articles);
-  const now = Date.now();
-  const cached = sentimentCache.get(contentKey);
+  // Step 1: Check for cached individual article sentiments
+  const { cachedResults, uncachedArticles, cacheStats } = getCachedArticleSentiments(articles);
   
-  if (cached && (now - cached.timestamp) < SENTIMENT_CACHE_DURATION) {
-    console.log(`Using cached sentiment analysis for key: ${contentKey} (${Math.round((now - cached.timestamp) / 1000)}s old)`);
-    return cached.data;
+  console.log(`🔍 ARTICLE CACHE CHECK:`);
+  console.log(`   📰 Total Articles: ${articles.length}`);
+  console.log(`   ✅ Cache Hits: ${cacheStats.hits} articles (${((cacheStats.hits / articles.length) * 100).toFixed(1)}%)`);
+  console.log(`   ❌ Cache Misses: ${cacheStats.misses} articles`);
+  console.log(`   🎯 Need Analysis: ${uncachedArticles.length > 0 ? 'YES' : 'NO'}`);
+
+  // Step 2: If we have complete cached results, return them (even if Gemini is disabled)
+  if (cacheStats.misses === 0) {
+    console.log(`💾 COMPLETE CACHE: All articles have cached sentiment`);
+    console.log(`   📊 Returning: ${cacheStats.hits} cached sentiment analyses`);
+    console.log(`   ⚡ Performance: No API calls needed`);
+    return cachedResults.map(result => result!) // Safe to use ! since misses === 0
   }
 
-  // Combine all articles into a single context
-  const combinedText = articles.map((article, index) => 
-    `Article ${index + 1}: "${article.title}" - ${article.summary}`
-  ).join('\n\n');
-
-  const prompt = `
-    You are an expert financial analyst and portfolio manager. Analyze the sentiment of the following financial news articles and provide a detailed, concise, and polished analysis:
-    1. Individual sentiment analysis for each article (positive, negative, or neutral)
-    2. Confidence score (0-1) for each article based on clarity of sentiment indicators
-    3. Brief summary for each article highlighting key market-moving information
-    4. Consider impact on stock prices, investor confidence, and market trends and provide a recommendation for the stock market.
+  // Step 3: Handle partial or no cache when Gemini is disabled
+  if (!model || LOCAL_TESTING_DISABLE_GEMINI) {
+    console.log(`🚫 GEMINI DISABLED: Limited to cached results only`);
+    console.log(`   💾 Available: ${cacheStats.hits} cached sentiments`);
+    console.log(`   ❌ Missing: ${cacheStats.misses} articles (will show neutral)`);
+    console.log(`   🔧 To analyze missing articles: Set LOCAL_TESTING_DISABLE_GEMINI = false`);
     
-    Articles:
-    ${combinedText}
-    
-    Please respond in JSON format as an array:
-    [
-      {
-        "sentiment": "positive|negative|neutral",
-        "confidence": 0.85,
-        "summary": "Brief summary focusing on market impact and key financial insights"
-      },
-      // ... one object for each article in the same order
-    ]
-  `;
-
-  try {
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-    
-    // Clean the response and parse JSON
-    const cleanedText = text.replace(/```json|```/g, '').trim();
-    const sentimentResults = JSON.parse(cleanedText);
-    
-    // Ensure we have the right number of results
-    const results = Array.isArray(sentimentResults) ? sentimentResults : [];
-    const paddedResults = articles.map((_, index) => 
-      results[index] || {
+    // Return combination of cached results and neutral fallbacks
+    return cachedResults.map((cached) => 
+      cached || {
         sentiment: 'neutral' as const,
         confidence: 0,
-        summary: 'Unable to analyze sentiment'
+        summary: LOCAL_TESTING_DISABLE_GEMINI 
+          ? 'Gemini API disabled - enable to analyze this article'
+          : 'API key not configured'
       }
     );
-
-    // Cache the results with content-based key
-    sentimentCache.set(contentKey, {
-      timestamp: now,
-      data: paddedResults
-    });
-    
-    console.log(`Cached new sentiment analysis for key: ${contentKey}`);
-
-    return paddedResults;
-  } catch (error) {
-    console.error('Error analyzing bulk sentiment:', error);
-    return articles.map(() => ({
-      sentiment: 'neutral' as const,
-      confidence: 0,
-      summary: 'Unable to analyze sentiment'
-    }));
   }
+
+  // Step 4: Gemini is enabled - analyze only uncached articles
+  if (uncachedArticles.length > 0) {
+    console.log(`🤖 PARTIAL ANALYSIS: Analyzing ${uncachedArticles.length} uncached articles`);
+    console.log(`   ✅ Using Cache: ${cacheStats.hits} articles`);
+    console.log(`   🔍 Analyzing: ${uncachedArticles.length} articles`);
+    console.log(`   ⚡ Model: gemini-1.5-flash`);
+
+    // Check bulk content cache first (for the uncached articles only)
+    const uncachedArticleList = uncachedArticles.map(item => item.article);
+    const contentKey = generateContentHash(uncachedArticleList);
+    const now = Date.now();
+    const bulkCached = sentimentCache.get(contentKey);
+    
+    let newSentiments: Array<{
+      sentiment: 'positive' | 'negative' | 'neutral';
+      confidence: number;
+      summary: string;
+    }> = [];
+
+    if (bulkCached && (now - bulkCached.timestamp) < SENTIMENT_CACHE_DURATION) {
+      console.log(`🎯 BULK CACHE HIT: Found cached analysis for uncached article group`);
+      console.log(`   📊 Cache Key: ${contentKey}`);
+      console.log(`   ⏰ Cache Age: ${Math.round((now - bulkCached.timestamp) / 1000)}s`);
+      newSentiments = bulkCached.data;
+    } else {
+      // Need to run API analysis for uncached articles
+      const combinedText = uncachedArticleList.map((article, index) => 
+        `Article ${index + 1}: "${article.title}" - ${article.summary}`
+      ).join('\n\n');
+
+      const prompt = `
+        You are an expert financial analyst and portfolio manager. Analyze the sentiment of the following financial news articles and provide a detailed, concise, and polished analysis:
+        1. Individual sentiment analysis for each article (positive, negative, or neutral)
+        2. Confidence score (0-1) for each article based on clarity of sentiment indicators
+        3. Brief summary for each article highlighting key market-moving information
+        4. Consider impact on stock prices, investor confidence, and market trends and provide a recommendation for the stock market.
+        
+        Articles:
+        ${combinedText}
+        
+        Please respond in JSON format as an array:
+        [
+          {
+            "sentiment": "positive|negative|neutral",
+            "confidence": 0.85,
+            "summary": "Brief summary focusing on market impact and key financial insights"
+          },
+          // ... one object for each article in the same order
+        ]
+      `;
+
+      try {
+        console.log(`🤖 API CALL: Making Gemini API request for ${uncachedArticleList.length} articles`);
+        console.log(`   📊 Cache Key: ${contentKey} (new)`);
+        console.log(`   📝 Prompt Length: ${prompt.length} characters`);
+        
+        // Track the API call
+        trackApiCall();
+        const startTime = Date.now();
+        
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
+        const apiDuration = Date.now() - startTime;
+        
+        // Estimate tokens used (rough calculation: ~4 chars per token)
+        const estimatedTokens = Math.round((prompt.length + text.length) / 4);
+        
+        console.log(`✅ API SUCCESS: Gemini responded in ${apiDuration}ms`);
+        console.log(`   📤 Response Length: ${text.length} characters`);
+        console.log(`   🔢 Estimated Tokens: ${estimatedTokens}`);
+        
+        // Track successful API call
+        trackApiResult(true, null, estimatedTokens);
+        
+        // Clean the response and parse JSON
+        const cleanedText = text.replace(/```json|```/g, '').trim();
+        const sentimentResults = JSON.parse(cleanedText);
+        
+        // Ensure we have the right number of results
+        const results = Array.isArray(sentimentResults) ? sentimentResults : [];
+        newSentiments = uncachedArticleList.map((_, index) => 
+          results[index] || {
+            sentiment: 'neutral' as const,
+            confidence: 0,
+            summary: 'Unable to analyze sentiment'
+          }
+        );
+
+        // Cache the bulk results
+        sentimentCache.set(contentKey, {
+          timestamp: now,
+          data: newSentiments
+        });
+        
+        console.log(`💾 BULK CACHE STORED: New analysis cached for article group`);
+        console.log(`   📊 Cache Key: ${contentKey}`);
+        console.log(`   ⏰ Cache Duration: ${SENTIMENT_CACHE_DURATION / 60000} min`);
+        
+        // Log current usage stats after successful API call
+        logUsageStats();
+
+      } catch (error) {
+        console.error(`❌ API ERROR: Gemini sentiment analysis failed`);
+        console.error(`   📊 Cache Key: ${contentKey}`);
+        console.error(`   📰 Articles: ${uncachedArticleList.length} articles`);
+        console.error(`   ⚠️  Error:`, error);
+        
+        // Track failed API call
+        trackApiResult(false, error);
+        logUsageStats();
+        
+        // Fallback to neutral for failed articles
+        newSentiments = uncachedArticleList.map(() => ({
+          sentiment: 'neutral' as const,
+          confidence: 0,
+          summary: 'Unable to analyze sentiment due to API error'
+        }));
+      }
+    }
+
+    // Step 5: Cache the new individual article sentiments
+    if (newSentiments.length > 0) {
+      console.log(`💾 INDIVIDUAL CACHE: Storing ${newSentiments.length} new article sentiments`);
+      cacheArticleSentiments(uncachedArticleList, newSentiments);
+    }
+
+    // Step 6: Combine cached and new results in correct order
+    const finalResults: Array<{
+      sentiment: 'positive' | 'negative' | 'neutral';
+      confidence: number;
+      summary: string;
+    }> = [];
+
+    let newSentimentIndex = 0;
+    for (let i = 0; i < articles.length; i++) {
+      if (cachedResults[i]) {
+        // Use cached result
+        finalResults[i] = cachedResults[i]!;
+      } else {
+        // Use new sentiment result
+        finalResults[i] = newSentiments[newSentimentIndex];
+        newSentimentIndex++;
+      }
+    }
+
+    console.log(`✅ SENTIMENT ANALYSIS COMPLETE:`);
+    console.log(`   📊 Total Results: ${finalResults.length}`);
+    console.log(`   💾 From Cache: ${cacheStats.hits}`);
+    console.log(`   🆕 Newly Analyzed: ${newSentiments.length}`);
+    console.log(`   📈 Cache Coverage: ${((cacheStats.hits / articles.length) * 100).toFixed(1)}%`);
+
+    return finalResults;
+  }
+
+  // Step 7: Fallback - should never reach here, but just in case
+  console.log(`⚠️ FALLBACK: Unexpected state - returning neutral sentiments`);
+  return articles.map(() => ({
+    sentiment: 'neutral' as const,
+    confidence: 0,
+    summary: 'Unexpected error in sentiment analysis'
+  }));
 }
 
 export function calculateOverallSentiment(articles: Array<{
@@ -294,7 +691,9 @@ export async function generateStockRecommendations(
   if (!model) {
     return {
       recommendations: [],
-      analysis: 'Google AI API key not configured'
+      analysis: LOCAL_TESTING_DISABLE_GEMINI 
+        ? 'Gemini API disabled for local testing. Stock recommendations unavailable while testing locally. Set LOCAL_TESTING_DISABLE_GEMINI to false to re-enable AI analysis.'
+        : 'Google AI API key not configured'
     };
   }
   const prompt = `

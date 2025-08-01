@@ -7,13 +7,14 @@ import { NewsCard } from '@/components/NewsCard';
 import { AnalysisResults } from '@/components/AnalysisResults';
 import { SentimentChart } from '@/components/SentimentChart';
 import { StockChart } from '@/components/StockChart';
+import PredictionDashboard from '@/components/PredictionDashboard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { StockData } from '@/lib/financial-data';
 import { NewsArticle } from '@/lib/news-scraper';
-import { TrendingUp, Newspaper, RefreshCw, Clock, CheckCircle, BarChart3, PieChart, Activity } from 'lucide-react';
+import { TrendingUp, Newspaper, RefreshCw, Clock, CheckCircle, BarChart3, PieChart, Activity, Brain } from 'lucide-react';
 
 // Server-side data service now handles all API calls and caching
 
@@ -120,6 +121,18 @@ export default function Home() {
   // Pagination state for Top Performing Stocks
   const [topStocksDisplayCount, setTopStocksDisplayCount] = useState(6);
   
+  // **NEW: Auto-loading state**
+  const [isAutoLoading, setIsAutoLoading] = useState(false);
+  const [autoLoadingProgress, setAutoLoadingProgress] = useState(0);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  
+  // **NEW: AI Predictions state**
+  const [showAIPredictions, setShowAIPredictions] = useState(true);
+  
+  // **NEW: Smart update system**
+  const [lastUpdateTime, setLastUpdateTime] = useState<Date>(new Date());
+  const [updateInterval, setUpdateInterval] = useState<NodeJS.Timeout | null>(null);
+  
   // Enhanced loading states
   const stocksLoading = useLoadingState(300);
   const newsLoading = useLoadingState(300);
@@ -131,11 +144,78 @@ export default function Home() {
     expirationTimes: {}
   });
 
-  // Stock loading function with support for 500+ stocks and lazy loading
-  const loadPopularStocks = useCallback(async (forceRefresh = false, limit?: number) => {
-    console.log('🔄 Loading stocks from Yahoo Finance...', { forceRefresh, limit });
+  // **NEW: Smart update functions**
 
-    stocksLoading.startLoading();
+  const startAutoUpdates = useCallback(() => {
+    if (updateInterval) {
+      clearInterval(updateInterval);
+    }
+    
+    const interval = setInterval(async () => {
+      console.log('🔄 Auto-update triggered...');
+      
+      try {
+        const response = await fetch('/api/stocks?update_only=true', {
+          cache: 'no-cache'
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          const updatedStocks = result.stocks || result;
+          
+          // Update existing stocks with new data (preserve order and structure)
+          setStocks(prevStocks => {
+            if (prevStocks.length === 0) return prevStocks;
+            
+            const stockMap = new Map(updatedStocks.map((stock: StockData) => [stock.symbol, stock]));
+            return prevStocks.map(prevStock => {
+              const updatedStock = stockMap.get(prevStock.symbol);
+              return updatedStock || prevStock;
+            }) as StockData[];
+          });
+          
+          setLastUpdateTime(new Date());
+          console.log('✅ Stock data updated successfully');
+        }
+      } catch (error) {
+        console.error('❌ Failed to update stock data:', error);
+      }
+    }, 30000); // Update every 30 seconds
+    
+    setUpdateInterval(interval);
+    console.log('🔄 Auto-update system started (30s intervals)');
+  }, [updateInterval]);
+
+  const stopAutoUpdates = useCallback(() => {
+    if (updateInterval) {
+      clearInterval(updateInterval);
+      setUpdateInterval(null);
+      console.log('⏹️ Auto-update system stopped');
+    }
+  }, [updateInterval]);
+
+  // **NEW: Start auto-updates when stocks are first loaded**
+  useEffect(() => {
+    if (stocks.length > 0 && !updateInterval) {
+      console.log('🚀 Starting auto-update system...');
+      startAutoUpdates();
+    }
+  }, [stocks.length, updateInterval, startAutoUpdates]);
+
+  // **NEW: Cleanup on unmount**
+  useEffect(() => {
+    return () => {
+      stopAutoUpdates();
+    };
+  }, [stopAutoUpdates]);
+
+  // Stock loading function with support for 500+ stocks and lazy loading
+  const loadPopularStocks = useCallback(async (forceRefresh = false, limit?: number, isBackground = false) => {
+    console.log('🔄 Loading stocks from Yahoo Finance...', { forceRefresh, limit, isBackground });
+
+    if (!isBackground) {
+      stocksLoading.startLoading();
+    }
     
     try {
       // Build URL with optional limit parameter
@@ -183,12 +263,64 @@ export default function Home() {
       
       console.log('✅ Setting stocks state:', stocksData.length);
       setStocks(stocksData);
+      
+      // **NEW: Update progress for auto-loading**
+      if (isBackground) {
+        const progress = Math.min((stocksData.length / 500) * 100, 100);
+        setAutoLoadingProgress(progress);
+      }
+      
     } catch (error) {
       console.error('❌ Error loading stocks:', error);
     } finally {
-      stocksLoading.stopLoading();
+      if (!isBackground) {
+        stocksLoading.stopLoading();
+      }
     }
   }, [stocksLoading]);
+
+  // **NEW: Background auto-loading function**
+  const startBackgroundLoading = useCallback(async () => {
+    const maxStocks = 500;
+    const batchSize = 100;
+    const delayBetweenBatches = 3000; // 3 seconds between batches
+    
+    setIsAutoLoading(true);
+    console.log('🤖 Starting automatic background stock loading...');
+    
+    let currentBatch = 200; // Start from 200 (after initial 100)
+    
+    while (currentBatch <= maxStocks) {
+      try {
+        // Check if user is in search mode - pause auto-loading during search
+        if (isSearchMode) {
+          console.log('⏸️ Pausing auto-loading during search...');
+          await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
+          continue;
+        }
+        
+        console.log(`🔄 Auto-loading batch: ${currentBatch} stocks`);
+        await loadPopularStocks(false, currentBatch, true);
+        
+        currentBatch += batchSize;
+        
+        // Break if we've reached the limit
+        if (currentBatch > maxStocks) break;
+        
+        // Wait before next batch to avoid overwhelming the API
+        await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
+        
+      } catch (error) {
+        console.error('❌ Error in background loading:', error);
+        // Wait longer on error before retrying
+        await new Promise(resolve => setTimeout(resolve, delayBetweenBatches * 2));
+      }
+    }
+    
+    setIsAutoLoading(false);
+    setAutoLoadingProgress(100);
+    console.log('✅ Background loading complete - 500 stocks loaded!');
+  }, [loadPopularStocks, isSearchMode]);
 
   const loadNews = useCallback(async (forceRefresh = false) => {
     console.log('🔄 Loading news from server cache...', { forceRefresh });
@@ -242,21 +374,21 @@ export default function Home() {
           setAnalysisResult(null);
         } else {
           // Generate AI analysis
-          const response = await fetch('/api/analysis', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ query, type: 'recommendation' }),
-          });
-          if (!response.ok) {
-            throw new Error(`Analysis failed: ${response.status}`);
-          }
-          const data = await response.json();
-          setAnalysisResult(data);
-          // Clear search mode when doing analysis
-          setIsSearchMode(false);
-          setSearchResults([]);
+          // const response = await fetch('/api/analysis', {
+          //   method: 'POST',
+          //   headers: {
+          //     'Content-Type': 'application/json',
+          //   },
+          //   body: JSON.stringify({ query, type: 'recommendation' }),
+          // });
+          // if (!response.ok) {
+          //   throw new Error(`Analysis failed: ${response.status}`);
+          // }
+          // const data = await response.json();
+          // setAnalysisResult(data);
+          // // Clear search mode when doing analysis
+          // setIsSearchMode(false);
+          // setSearchResults([]);
         }
       } catch (error) {
         console.error('Error processing search:', error);
@@ -292,10 +424,25 @@ export default function Home() {
   useEffect(() => {
     console.log('🚀 Component mounted - loading initial data');
     // Start with 100 stocks for good initial load, can load more on demand
-    loadPopularStocks(false, 100);
+    loadPopularStocks(false, 100).then(() => {
+      setInitialLoadComplete(true);
+    });
     loadNews();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty dependency array to run only once on mount
+
+  // **NEW: Auto-loading effect - starts after initial load is complete**
+  useEffect(() => {
+    if (initialLoadComplete && stocks.length > 0 && stocks.length < 500 && !isAutoLoading) {
+      console.log('🚀 Starting background auto-loading after initial load completion');
+      // Start background loading after a short delay to let the UI settle
+      const timer = setTimeout(() => {
+        startBackgroundLoading();
+      }, 2000); // 2-second delay
+      
+      return () => clearTimeout(timer);
+    }
+  }, [initialLoadComplete, stocks.length, isAutoLoading, startBackgroundLoading]);
 
   // Memoized computed values
   const marketStats = useMemo(() => {
@@ -315,9 +462,9 @@ export default function Home() {
     loadNews(true);
   }, [loadPopularStocks, loadNews]);
 
-  // Load more stocks functionality - can fetch up to 500 stocks
+  // **UPDATED: Load more stocks functionality - now just for manual override**
   const loadMoreStocks = useCallback(async () => {
-    const maxStocksToLoad = 500; // Can now load up to 500 S&P 500 stocks
+    const maxStocksToLoad = 500;
     
     if (stocks.length >= maxStocksToLoad) {
       console.log(`Already at maximum stocks limit: ${stocks.length}/${maxStocksToLoad}`);
@@ -329,7 +476,7 @@ export default function Home() {
     try {
       // Calculate next batch size - load 100 more each time
       const nextLimit = Math.min(stocks.length + 100, maxStocksToLoad);
-      console.log(`Loading more stocks: current ${stocks.length} → target ${nextLimit}`);
+      console.log(`Manually loading more stocks: current ${stocks.length} → target ${nextLimit}`);
       
       // Load with increased limit
       await loadPopularStocks(false, nextLimit);
@@ -352,7 +499,7 @@ export default function Home() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            Financial Market Intelligence
+            Market Brief
           </h1>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto mb-8">
             AI-powered financial analysis with real-time market data, sentiment insights, and intelligent stock recommendations
@@ -377,11 +524,20 @@ export default function Home() {
               </Badge>
             )}
             
-            {!stocksLoading.showLoading && stocks.length > 0 && (
+            {/* **NEW: Auto-loading progress indicator** */}
+            {isAutoLoading && (
+              <Badge variant="outline" className="text-xs text-purple-600">
+                <div className="animate-pulse h-3 w-3 bg-purple-600 rounded-full mr-1"></div>
+                Auto-loading: {Math.round(autoLoadingProgress)}% ({stocks.length}/500)
+              </Badge>
+            )}
+            
+            {!stocksLoading.showLoading && !isAutoLoading && stocks.length > 0 && (
               <Badge variant="outline" className="text-xs text-green-600">
                 ✅ {stocks.length} stocks loaded
                 {stocks.length === 20 && ' (fallback)'}
-                {stocks.length > 20 && ' (S&P 500)'}
+                {stocks.length > 20 && stocks.length < 500 && ' (loading more...)'}
+                {stocks.length === 500 && ' (complete S&P 500)'}
               </Badge>
             )}
             
@@ -427,7 +583,7 @@ export default function Home() {
 
         {/* Dashboard Tabs */}
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 max-w-2xl mx-auto">
+          <TabsList className="grid w-full grid-cols-5 max-w-3xl mx-auto">
             <TabsTrigger value="overview" className="flex items-center space-x-2">
               <Activity className="h-4 w-4" />
               <span>Overview</span>
@@ -439,6 +595,10 @@ export default function Home() {
             <TabsTrigger value="sentiment" className="flex items-center space-x-2">
               <PieChart className="h-4 w-4" />
               <span>Sentiment</span>
+            </TabsTrigger>
+            <TabsTrigger value="predictions" className="flex items-center space-x-2">
+              <Brain className="h-4 w-4" />
+              <span>AI Predictions</span>
             </TabsTrigger>
             <TabsTrigger value="news" className="flex items-center space-x-2">
               <Newspaper className="h-4 w-4" />
@@ -551,10 +711,28 @@ export default function Home() {
             {/* Top Stocks Preview */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Top Performing Stocks</CardTitle>
-                <Badge variant="outline" className="text-xs">
-                  {topStocksDisplayCount} of {displayStocks.length} stocks
-                </Badge>
+                <div className="flex items-center space-x-4">
+                  <CardTitle>Top Performing Stocks</CardTitle>
+                  <Button
+                    variant={showAIPredictions ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setShowAIPredictions(!showAIPredictions)}
+                    className="flex items-center space-x-2"
+                  >
+                    <Brain className="h-4 w-4" />
+                    <span>AI Predictions {showAIPredictions ? 'ON' : 'OFF'}</span>
+                  </Button>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Badge variant="outline" className="text-xs">
+                    {topStocksDisplayCount} of {displayStocks.length} stocks
+                  </Badge>
+                  {lastUpdateTime && (
+                    <Badge variant="outline" className="text-xs">
+                      Updated: {lastUpdateTime.toLocaleTimeString()}
+                    </Badge>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -562,7 +740,11 @@ export default function Home() {
                     .sort((a, b) => b.changePercent - a.changePercent)
                     .slice(0, topStocksDisplayCount)
                     .map((stock) => (
-                      <StockCard key={stock.symbol} stock={stock} />
+                      <StockCard 
+                        key={stock.symbol} 
+                        stock={stock} 
+                        showPrediction={showAIPredictions}
+                      />
                     ))}
                 </div>
                 
@@ -580,8 +762,8 @@ export default function Home() {
                   </div>
                 )}
                 
-                {/* Load More Stocks from API */}
-                {stocks.length < 500 && (
+                {/* **UPDATED: Load More Button - now optional since auto-loading is active** */}
+                {stocks.length < 500 && !isAutoLoading && (
                   <div className="text-center pt-2">
                     <Button
                       variant="ghost"
@@ -594,10 +776,21 @@ export default function Home() {
                       <span>
                         {stocksLoading.isLoading 
                           ? 'Loading more...' 
-                          : `Load More Stocks (${stocks.length}/500 S&P 500)`
+                          : `Load More Now (${stocks.length}/500 S&P 500)`
                         }
                       </span>
                     </Button>
+                  </div>
+                )}
+                
+                {/* **NEW: Auto-loading status** */}
+                {isAutoLoading && (
+                  <div className="text-center pt-2">
+                    <div className="flex items-center justify-center space-x-2 text-sm text-purple-600">
+                      <div className="animate-pulse h-2 w-2 bg-purple-600 rounded-full"></div>
+                      <span>Automatically loading more stocks in background...</span>
+                      <span>({stocks.length}/500)</span>
+                    </div>
                   </div>
                 )}
               </CardContent>
@@ -647,7 +840,7 @@ export default function Home() {
                 <div className="flex items-center space-x-2">
                   <Badge variant="outline" className="text-xs">
                     <CheckCircle className="h-3 w-3 mr-1" />
-                    Rate Limited (10min)
+                    Rate Limited (30min)
                   </Badge>
                   <Button
                     variant="outline"
@@ -677,6 +870,21 @@ export default function Home() {
                   </CardContent>
                 </Card>
               )}
+            </div>
+          </TabsContent>
+
+          {/* AI Predictions Tab */}
+          <TabsContent value="predictions">
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold text-gray-900">AI Market Predictions</h2>
+                <Badge variant="outline" className="text-xs">
+                  <Brain className="h-3 w-3 mr-1" />
+                  ML Model Active
+                </Badge>
+              </div>
+              
+              <PredictionDashboard />
             </div>
           </TabsContent>
 
@@ -728,8 +936,8 @@ export default function Home() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {news.map((article) => (
-                      <NewsCard key={article.id} article={article} />
+                    {news.map((article, i) => (
+                      <NewsCard key={`article-${i}-${article.id}`} article={article} />
                     ))}
                     {news.length === 0 && (
                       <div className="text-center py-8 text-gray-500">

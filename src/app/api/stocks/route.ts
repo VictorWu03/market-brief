@@ -173,6 +173,7 @@ export async function GET(request: Request) {
     const searchQuery = searchParams.get('search');
     const limitParam = searchParams.get('limit');
     const offsetParam = searchParams.get('offset');
+    const updateOnly = searchParams.get('update_only') === 'true';
     
     const limit = limitParam ? parseInt(limitParam) : undefined;
     const offset = offsetParam ? parseInt(offsetParam) : 0;
@@ -229,6 +230,32 @@ export async function GET(request: Request) {
           }
         });
       }
+    }
+    
+    // Handle update_only requests (for smart updates)
+    if (updateOnly) {
+      console.log('🔄 Update-only request - fetching fresh data');
+      const stocks = await fetchAllStocks(limit);
+      
+      // Update cache with fresh data
+      const now = Date.now();
+      cachedData = {
+        stocks,
+        timestamp: now,
+        cacheKey: `stocks_${limit || 'default'}`
+      };
+      
+      // Return only the updated stock data (no pagination info for updates)
+      return NextResponse.json({
+        stocks: stocks
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Data-Source': 'update-only',
+          'X-Stock-Count': stocks.length.toString(),
+          'X-Update-Timestamp': now.toString()
+        }
+      });
     }
     
     // Create cache key that includes limit for proper caching

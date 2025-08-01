@@ -311,8 +311,19 @@ export async function GET(request: Request) {
 
     // Check if we should skip sentiment analysis (not enough time has passed)
     const shouldUpdateSentiment = (now - lastSentimentUpdate) >= SENTIMENT_UPDATE_INTERVAL;
+    const minutesSinceLastUpdate = Math.round((now - lastSentimentUpdate) / (60 * 1000));
+    const minutesUntilNextUpdate = Math.round((SENTIMENT_UPDATE_INTERVAL - (now - lastSentimentUpdate)) / (60 * 1000));
+    
+    console.log(`🔍 SENTIMENT TIMING CHECK:`);
+    console.log(`   ⏰ Last Update: ${minutesSinceLastUpdate} minutes ago`);
+    console.log(`   📋 Update Interval: ${SENTIMENT_UPDATE_INTERVAL / (60 * 1000)} minutes`);
+    console.log(`   🎯 Should Update: ${shouldUpdateSentiment ? 'YES - Time to run analysis!' : `NO - Wait ${minutesUntilNextUpdate} more minutes`}`);
+    console.log(`   🤖 API Key Available: ${process.env.GOOGLE_AI_API_KEY ? 'YES' : 'NO'}`);
+    
     if (!shouldUpdateSentiment && cachedData) {
-      console.log(`⏰ Skipping sentiment analysis - only ${Math.round((now - lastSentimentUpdate) / (60 * 1000))} minutes since last update`);
+      console.log(`⏰ SENTIMENT SKIP: Using cached sentiment analysis`);
+      console.log(`   📊 Reason: Only ${minutesSinceLastUpdate} minutes since last update (need 30+)`);
+      console.log(`   ⌛ Next Update: In ${minutesUntilNextUpdate} minutes`);
       
       // Return cached data without new sentiment analysis
       const response = {
@@ -349,7 +360,12 @@ export async function GET(request: Request) {
     
     try {
       if (process.env.GOOGLE_AI_API_KEY && shouldUpdateSentiment) {
-        console.log('🤖 Running scheduled sentiment analysis (every 30 minutes)...');
+        console.log('🚀 SENTIMENT ANALYSIS TRIGGERED:');
+        console.log(`   ✅ Time Check: ${minutesSinceLastUpdate} min since last update (threshold: 30 min)`);
+        console.log(`   📰 Articles to Analyze: ${articles.length}`);
+        console.log(`   🤖 Model: gemini-1.5-flash (bulk sentiment analysis)`);
+        console.log(`   💰 Quota Impact: This will use ~1 API request from your daily quota`);
+        
         const { analyzeBulkSentiment, calculateOverallSentiment } = await import('@/lib/gemini');
         const sentimentResults = await analyzeBulkSentiment(articles);
         
@@ -364,10 +380,15 @@ export async function GET(request: Request) {
         
         // Update last sentiment update timestamp
         lastSentimentUpdate = now;
-        console.log('✅ Sentiment analysis completed successfully');
+        console.log('✅ SENTIMENT ANALYSIS COMPLETE:');
+        console.log(`   📊 Overall Sentiment: ${sentiment.overallSentiment} (confidence: ${(sentiment.confidence * 100).toFixed(1)}%)`);
+        console.log(`   📈 Breakdown: +${sentiment.breakdown.positive} -${sentiment.breakdown.negative} =${sentiment.breakdown.neutral}`);
+        console.log(`   ⏰ Next Analysis: In 30 minutes`);
       } else if (cachedData?.sentiment) {
         // Use previous sentiment data if within 30-minute window
-        console.log('⏰ Using cached sentiment data (within 30-minute window)');
+        console.log('📋 SENTIMENT REUSE: Using cached sentiment from previous analysis');
+        console.log(`   📊 Sentiment Age: ${minutesSinceLastUpdate} minutes old`);
+        console.log(`   🎯 Reason: ${!process.env.GOOGLE_AI_API_KEY ? 'No API key configured' : 'Within 30-minute cache window'}`);
         sentiment = cachedData.sentiment;
         // Apply cached sentiment to new articles if available
         if (cachedData && cachedData.articles.length > 0) {
@@ -376,13 +397,20 @@ export async function GET(request: Request) {
             sentiment: cachedData!.articles[index]?.sentiment || undefined
           }));
         }
+      } else {
+        console.log('⚠️ SENTIMENT UNAVAILABLE: No cached sentiment and conditions not met for new analysis');
+        console.log(`   📊 API Key: ${process.env.GOOGLE_AI_API_KEY ? 'Available' : 'Missing'}`);
+        console.log(`   ⏰ Time Since Last: ${minutesSinceLastUpdate} min (need 30+ min)`);
+        console.log(`   💾 Cached Data: ${cachedData ? 'Available but no sentiment' : 'None'}`);
       }
     } catch (error) {
-      console.log('⚠️ Sentiment analysis skipped:', error);
+      console.error('❌ SENTIMENT ERROR: Analysis failed');
+      console.error(`   📊 Articles: ${articles.length}`);
+      console.error(`   ⚠️  Error:`, error);
       // Try to use cached sentiment if available
       if (cachedData?.sentiment) {
         sentiment = cachedData.sentiment;
-        console.log('🔄 Using fallback cached sentiment');
+        console.log('🔄 FALLBACK: Using cached sentiment due to error');
       }
     }
     
