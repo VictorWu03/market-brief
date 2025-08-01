@@ -184,7 +184,7 @@ export default function Home() {
     
     setUpdateInterval(interval);
     console.log('🔄 Auto-update system started (30s intervals)');
-  }, [updateInterval]);
+  }, []);
 
   const stopAutoUpdates = useCallback(() => {
     if (updateInterval) {
@@ -192,7 +192,7 @@ export default function Home() {
       setUpdateInterval(null);
       console.log('⏹️ Auto-update system stopped');
     }
-  }, [updateInterval]);
+  }, []);
 
   // **NEW: Start auto-updates when stocks are first loaded**
   useEffect(() => {
@@ -200,14 +200,14 @@ export default function Home() {
       console.log('🚀 Starting auto-update system...');
       startAutoUpdates();
     }
-  }, [stocks.length, updateInterval, startAutoUpdates]);
+  }, [updateInterval]);
 
   // **NEW: Cleanup on unmount**
   useEffect(() => {
     return () => {
       stopAutoUpdates();
     };
-  }, [stopAutoUpdates]);
+  }, []);
 
   // Stock loading function with support for 500+ stocks and lazy loading
   const loadPopularStocks = useCallback(async (forceRefresh = false, limit?: number, isBackground = false) => {
