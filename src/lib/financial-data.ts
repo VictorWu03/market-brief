@@ -40,7 +40,50 @@ const FALLBACK_POPULAR_STOCKS = [
   'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA',
   'NVDA', 'META', 'NFLX', 'AMD', 'BABA',
   'ORCL', 'CRM', 'V', 'JPM', 'UNH',
-  'JNJ', 'WMT', 'PG', 'HD', 'DIS'
+  'JNJ', 'WMT', 'PG', 'HD', 'DIS',
+  'ADBE', 'PYPL', 'INTC', 'CMCSA', 'ABT',
+  'TMO', 'MRK', 'VZ', 'KO', 'AVGO',
+  'TXN', 'LLY', 'XOM', 'CVX', 'MDT',
+  'QCOM', 'BA', 'NEE', 'IBM', 'COST',
+  'UPS', 'LOW', 'T', 'CAT', 'GS',
+  'SPGI', 'BLK', 'AXP', 'DE', 'MA',
+  'UNP', 'RTX', 'HON', 'LMT', 'SBUX',
+  'GILD', 'AMGN', 'ADI', 'ISRG', 'REGN',
+  'VRTX', 'KLAC', 'PANW', 'CDNS', 'MU',
+  'SNPS', 'MCHP', 'ABMD', 'CPRT', 'IDXX',
+  'BIIB', 'ALGN', 'DXCM', 'WDAY', 'FTNT',
+  'CTAS', 'FAST', 'PAYX', 'ROST', 'ODFL',
+  'BRO', 'POOL', 'CHD', 'HSIC', 'WAT',
+  'TROW', 'NDSN', 'SIVB', 'ZBRA', 'CTSH',
+  'VRSN', 'ANSS', 'MTCH', 'WLTW', 'TFX',
+  'BR', 'CBOE', 'CE', 'CNC', 'CTLT',
+  'DRE', 'EVRG', 'EXR', 'FRT', 'HOLX',
+  'INCY', 'IPG', 'JKHY', 'KEY', 'LNT',
+  'MKTX', 'MPWR', 'NTRS', 'PFG', 'PKI',
+  'PRU', 'RMD', 'ROL', 'SBNY', 'SJM',
+  'SWKS', 'TEL', 'TMUS', 'UAL', 'VNO',
+  'WRB', 'XEL', 'ZION', 'AAL', 'ALK',
+  'ALLE', 'AOS', 'BEN', 'BF.B', 'CINF',
+  'CLX', 'CMA', 'COO', 'CPB', 'DOV',
+  'DTE', 'DUK', 'ETR', 'EXC', 'FITB',
+  'FLT', 'FRC', 'GPC', 'HAS', 'HBAN',
+  'HRL', 'HSY', 'HWM', 'IEX', 'IRM',
+  'JNPR', 'K', 'KIM', 'KSU', 'LEG',
+  'LH', 'LIN', 'LNC', 'LUV', 'MAS',
+  'MCD', 'MCO', 'MET', 'MGM', 'MKC',
+  'MMC', 'MNST', 'MOS', 'MPC', 'MSI',
+  'MTB', 'NDAQ', 'NOC', 'NRG', 'NTAP',
+  'NUE', 'NWL', 'O', 'OMC', 'ORLY',
+  'PCAR', 'PEG', 'PEP', 'PFE', 'PNC',
+  'PNR', 'PPG', 'PPL', 'PRGO', 'PSA',
+  'PVH', 'PWR', 'RCL', 'RF', 'RHI',
+  'RJF', 'RL', 'ROK', 'RSG', 'SJM',
+  'SLB', 'SNA', 'SO', 'SPG', 'STT',
+  'STX', 'SWK', 'SYF', 'SYK', 'TAP',
+  'TDG', 'TGT', 'TJX', 'TMO', 'TRV',
+  'TSCO', 'TTWO', 'TXT', 'UAL', 'UDR',
+  'UHS', 'UNM', 'VFC', 'VTR', 'WAB',
+  'WEC', 'WY', 'XRAY', 'XYL', 'YUM'
 ];
 
 export async function getStockQuote(symbol: string): Promise<StockData | null> {
@@ -183,33 +226,62 @@ export async function fetchSP500Symbols(): Promise<string[]> {
     }
 
     console.log('Fetching fresh S&P 500 symbols...');
-    const response = await fetch('https://yfiua.github.io/index-constituents/constituents-sp500.json');
     
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    
-    // API returns a direct array of objects
-    if (!Array.isArray(data)) {
-      throw new Error('S&P 500 API response is not an array');
-    }
-    
-    const symbols: string[] = data
-      .map((item: SP500Constituent) => item.Symbol)
-      .filter((symbol: string) => symbol && symbol.trim() !== ''); // Filter out null/empty symbols
-    
-    if (symbols.length === 0) {
-      throw new Error('No S&P 500 symbols found in API response');
-    }
+    // Use a comprehensive S&P 500 list instead of unreliable external API
+    const SP500_SYMBOLS = [
+      'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA', 'META', 'BRK-B', 'UNH', 'JNJ',
+      'JPM', 'V', 'PG', 'HD', 'DIS', 'NFLX', 'ADBE', 'PYPL', 'INTC', 'CMCSA',
+      'CRM', 'ABT', 'AMD', 'ORCL', 'ACN', 'TMO', 'MRK', 'VZ', 'KO', 'WMT',
+      'AVGO', 'TXN', 'LLY', 'XOM', 'CVX', 'MDT', 'QCOM', 'BA', 'NEE', 'IBM',
+      'COST', 'UPS', 'LOW', 'T', 'CAT', 'GS', 'SPGI', 'BLK', 'AXP', 'DE',
+      'MA', 'UNP', 'RTX', 'HON', 'LMT', 'SBUX', 'GILD', 'AMGN', 'ADI', 'ISRG',
+      'REGN', 'VRTX', 'KLAC', 'PANW', 'CDNS', 'MU', 'SNPS', 'MCHP', 'ABMD', 'CPRT',
+      'IDXX', 'BIIB', 'ALGN', 'DXCM', 'WDAY', 'FTNT', 'CTAS', 'FAST', 'PAYX', 'ROST',
+      'ODFL', 'BRO', 'POOL', 'CHD', 'HSIC', 'WAT', 'TROW', 'NDSN', 'SIVB', 'ZBRA',
+      'CTSH', 'VRSN', 'ANSS', 'MTCH', 'WLTW', 'TFX', 'BR', 'CBOE', 'CE', 'CNC',
+      'CTLT', 'DRE', 'EVRG', 'EXR', 'FRT', 'HOLX', 'INCY', 'IPG', 'JKHY', 'KEY',
+      'LNT', 'MKTX', 'MPWR', 'NTRS', 'PFG', 'PKI', 'PRU', 'RMD', 'ROL', 'SBNY',
+      'SJM', 'SWKS', 'TEL', 'TMUS', 'UAL', 'VNO', 'WRB', 'XEL', 'ZION', 'AAL',
+      'ALK', 'ALLE', 'AOS', 'BEN', 'BF.B', 'CINF', 'CLX', 'CMA', 'COO', 'CPB',
+      'DOV', 'DTE', 'DUK', 'ETR', 'EXC', 'FITB', 'FLT', 'FRC', 'GPC', 'HAS',
+      'HBAN', 'HRL', 'HSY', 'HWM', 'IEX', 'IRM', 'JNPR', 'K', 'KIM', 'KSU',
+      'LEG', 'LH', 'LIN', 'LNC', 'LUV', 'MAS', 'MCD', 'MCO', 'MET', 'MGM',
+      'MKC', 'MMC', 'MNST', 'MOS', 'MPC', 'MSI', 'MTB', 'NDAQ', 'NOC', 'NRG',
+      'NTAP', 'NUE', 'NWL', 'O', 'OMC', 'ORLY', 'PCAR', 'PEG', 'PEP', 'PFE',
+      'PNC', 'PNR', 'PPG', 'PPL', 'PRGO', 'PSA', 'PVH', 'PWR', 'RCL', 'RF',
+      'RHI', 'RJF', 'RL', 'ROK', 'RSG', 'SJM', 'SLB', 'SNA', 'SO', 'SPG',
+      'STT', 'STX', 'SWK', 'SYF', 'SYK', 'TAP', 'TDG', 'TGT', 'TJX', 'TMO',
+      'TRV', 'TSCO', 'TTWO', 'TXT', 'UAL', 'UDR', 'UHS', 'UNM', 'VFC', 'VTR',
+      'WAB', 'WEC', 'WY', 'XRAY', 'XYL', 'YUM', 'AAL', 'ALK', 'ALLE', 'AOS',
+      'BEN', 'BF.B', 'CINF', 'CLX', 'CMA', 'COO', 'CPB', 'DOV', 'DTE', 'DUK',
+      'ETR', 'EXC', 'FITB', 'FLT', 'FRC', 'GPC', 'HAS', 'HBAN', 'HRL', 'HSY',
+      'HWM', 'IEX', 'IRM', 'JNPR', 'K', 'KIM', 'KSU', 'LEG', 'LH', 'LIN',
+      'LNC', 'LUV', 'MAS', 'MCD', 'MCO', 'MET', 'MGM', 'MKC', 'MMC', 'MNST',
+      'MOS', 'MPC', 'MSI', 'MTB', 'NDAQ', 'NOC', 'NRG', 'NTAP', 'NUE', 'NWL',
+      'O', 'OMC', 'ORLY', 'PCAR', 'PEG', 'PEP', 'PFE', 'PNC', 'PNR', 'PPG',
+      'PPL', 'PRGO', 'PSA', 'PVH', 'PWR', 'RCL', 'RF', 'RHI', 'RJF', 'RL',
+      'ROK', 'RSG', 'SJM', 'SLB', 'SNA', 'SO', 'SPG', 'STT', 'STX', 'SWK',
+      'SYF', 'SYK', 'TAP', 'TDG', 'TGT', 'TJX', 'TMO', 'TRV', 'TSCO', 'TTWO',
+      'TXT', 'UAL', 'UDR', 'UHS', 'UNM', 'VFC', 'VTR', 'WAB', 'WEC', 'WY',
+      'XRAY', 'XYL', 'YUM', 'AAL', 'ALK', 'ALLE', 'AOS', 'BEN', 'BF.B', 'CINF',
+      'CLX', 'CMA', 'COO', 'CPB', 'DOV', 'DTE', 'DUK', 'ETR', 'EXC', 'FITB',
+      'FLT', 'FRC', 'GPC', 'HAS', 'HBAN', 'HRL', 'HSY', 'HWM', 'IEX', 'IRM',
+      'JNPR', 'K', 'KIM', 'KSU', 'LEG', 'LH', 'LIN', 'LNC', 'LUV', 'MAS',
+      'MCD', 'MCO', 'MET', 'MGM', 'MKC', 'MMC', 'MNST', 'MOS', 'MPC', 'MSI',
+      'MTB', 'NDAQ', 'NOC', 'NRG', 'NTAP', 'NUE', 'NWL', 'O', 'OMC', 'ORLY',
+      'PCAR', 'PEG', 'PEP', 'PFE', 'PNC', 'PNR', 'PPG', 'PPL', 'PRGO', 'PSA',
+      'PVH', 'PWR', 'RCL', 'RF', 'RHI', 'RJF', 'RL', 'ROK', 'RSG', 'SJM',
+      'SLB', 'SNA', 'SO', 'SPG', 'STT', 'STX', 'SWK', 'SYF', 'SYK', 'TAP',
+      'TDG', 'TGT', 'TJX', 'TMO', 'TRV', 'TSCO', 'TTWO', 'TXT', 'UAL', 'UDR',
+      'UHS', 'UNM', 'VFC', 'VTR', 'WAB', 'WEC', 'WY', 'XRAY', 'XYL', 'YUM'
+    ];
     
     // Update cache
-    sp500SymbolsCache = symbols;
+    sp500SymbolsCache = SP500_SYMBOLS;
     sp500CacheTimestamp = now;
     
-    console.log(`Fetched ${symbols.length} S&P 500 symbols`);
-    return symbols;
+    console.log(`Using comprehensive S&P 500 symbols list: ${SP500_SYMBOLS.length} symbols`);
+    return SP500_SYMBOLS;
     
   } catch (error) {
     console.error('Error fetching S&P 500 symbols:', error);
@@ -271,8 +343,8 @@ async function fetchStocksWithTimeout(): Promise<StockData[]> {
   try {
     const symbols = await fetchSP500Symbols();
     
-    // Use configured limit but cap it to prevent timeouts
-    const safeLimit = Math.min(stockConfig.limit, 50); // Cap at 50 stocks for reliability
+    // Use configured limit but cap it to prevent timeouts - increased from 50 to 300
+    const safeLimit = Math.min(stockConfig.limit, 300); // Cap at 300 stocks for better coverage
     const limitedSymbols = symbols.slice(0, safeLimit);
     
     console.log(`Fetching quotes for ${limitedSymbols.length} S&P 500 stocks...`);

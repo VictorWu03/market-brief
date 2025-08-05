@@ -157,9 +157,11 @@ async function fetchAllStocks(limit?: number): Promise<StockData[]> {
     // Use appropriate function based on requested limit
     let stocks: any[];
     if (!limit || limit <= 100) {
+      console.log('📊 Using getPopularStocks for limit <= 100');
       stocks = await getPopularStocks();
     } else {
       // For larger requests, use S&P 500 function
+      console.log('📊 Using getAllSP500Stocks for limit > 100');
       stocks = await getAllSP500Stocks();
     }
     
@@ -247,7 +249,17 @@ export async function GET(request: Request) {
         cachedData.cacheKey === cacheKey && 
         (now - cachedData.timestamp) < CACHE_DURATION) {
       console.log('📊 Returning cached stock data');
-      return NextResponse.json(cachedData.stocks.slice(offset, offset + (limit || cachedData.stocks.length)), {
+      const paginatedStocks = cachedData.stocks.slice(offset, offset + (limit || cachedData.stocks.length));
+      
+      return NextResponse.json({
+        stocks: paginatedStocks,
+        pagination: {
+          total: cachedData.stocks.length,
+          offset: offset,
+          limit: limit || cachedData.stocks.length,
+          hasMore: limit ? (offset + limit) < cachedData.stocks.length : false
+        }
+      }, {
         headers: {
           'Content-Type': 'application/json',
           'X-Data-Source': 'cache',
@@ -273,7 +285,15 @@ export async function GET(request: Request) {
     
     console.log(`✅ Returning ${paginatedStocks.length} stocks (${stocks.length} total)`);
     
-    return NextResponse.json(paginatedStocks, {
+    return NextResponse.json({
+      stocks: paginatedStocks,
+      pagination: {
+        total: stocks.length,
+        offset: offset,
+        limit: limit || stocks.length,
+        hasMore: limit ? (offset + limit) < stocks.length : false
+      }
+    }, {
       headers: {
         'Content-Type': 'application/json',
         'X-Data-Source': 'yahoo-fresh',
@@ -291,7 +311,17 @@ export async function GET(request: Request) {
     const limit = limitParam ? parseInt(limitParam) : 50;
     
     // Return fallback data on error
-    return NextResponse.json(FALLBACK_STOCKS.slice(0, limit), {
+    const fallbackStocks = FALLBACK_STOCKS.slice(0, limit);
+    
+    return NextResponse.json({
+      stocks: fallbackStocks,
+      pagination: {
+        total: FALLBACK_STOCKS.length,
+        offset: 0,
+        limit: limit,
+        hasMore: false
+      }
+    }, {
       headers: {
         'Content-Type': 'application/json',
         'X-Data-Source': 'fallback-error',
