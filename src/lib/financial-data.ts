@@ -47,12 +47,18 @@ export async function getStockQuote(symbol: string): Promise<StockData | null> {
   try {
     const quote = await yahooFinance.quote(symbol);
     
+    // Add null checks to prevent "Cannot read properties of null" errors
+    if (!quote) {
+      console.error(`Null quote received for ${symbol}`);
+      return null;
+    }
+    
     return {
-      symbol: (quote as any).symbol || symbol,
-      price: (quote as any).regularMarketPrice || 0,
-      change: (quote as any).regularMarketChange || 0,
-      changePercent: (quote as any).regularMarketChangePercent || 0,
-      volume: (quote as any).regularMarketVolume || 0,
+      symbol: quote.symbol || symbol,
+      price: quote.regularMarketPrice || 0,
+      change: quote.regularMarketChange || 0,
+      changePercent: quote.regularMarketChangePercent || 0,
+      volume: quote.regularMarketVolume || 0,
       marketCap: (quote as any).marketCap,
       peRatio: (quote as any).trailingPE,
       dividendYield: (quote as any).dividendYield,

@@ -200,7 +200,7 @@ export default function Home() {
       console.log('🚀 Starting auto-update system...');
       startAutoUpdates();
     }
-  }, [updateInterval]);
+  }, [stocks.length, updateInterval]);
 
   // **NEW: Cleanup on unmount**
   useEffect(() => {
@@ -262,7 +262,23 @@ export default function Home() {
       }
       
       console.log('✅ Setting stocks state:', stocksData.length);
-      setStocks(stocksData);
+      
+      // **FIXED: Update stocks intelligently instead of replacing**
+      if (isBackground && stocks.length > 0) {
+        // For background updates, merge with existing stocks
+        const existingSymbols = new Set(stocks.map(s => s.symbol));
+        const newStocks = stocksData.filter(stock => !existingSymbols.has(stock.symbol));
+        
+        if (newStocks.length > 0) {
+          console.log(`🔄 Adding ${newStocks.length} new stocks to existing ${stocks.length}`);
+          setStocks(prevStocks => [...prevStocks, ...newStocks]);
+        } else {
+          console.log('🔄 No new stocks to add, keeping existing stocks');
+        }
+      } else {
+        // For initial load or force refresh, replace completely
+        setStocks(stocksData);
+      }
       
       // **NEW: Update progress for auto-loading**
       if (isBackground) {
