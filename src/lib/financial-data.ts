@@ -45,6 +45,12 @@ const FALLBACK_POPULAR_STOCKS = [
 
 export async function getStockQuote(symbol: string): Promise<StockData | null> {
   try {
+    // Add additional validation for symbol
+    if (!symbol || symbol.trim() === '') {
+      console.error('Invalid symbol provided:', symbol);
+      return null;
+    }
+    
     const quote = await yahooFinance.quote(symbol);
     
     // Add null checks to prevent "Cannot read properties of null" errors
@@ -53,18 +59,21 @@ export async function getStockQuote(symbol: string): Promise<StockData | null> {
       return null;
     }
     
+    // Add safe property access with fallbacks
+    const safeQuote = quote as any;
+    
     return {
-      symbol: quote.symbol || symbol,
-      price: quote.regularMarketPrice || 0,
-      change: quote.regularMarketChange || 0,
-      changePercent: quote.regularMarketChangePercent || 0,
-      volume: quote.regularMarketVolume || 0,
-      marketCap: (quote as any).marketCap,
-      peRatio: (quote as any).trailingPE,
-      dividendYield: (quote as any).dividendYield,
-      fiftyTwoWeekHigh: (quote as any).fiftyTwoWeekHigh,
-      fiftyTwoWeekLow: (quote as any).fiftyTwoWeekLow,
-      name: (quote as any).longName || (quote as any).shortName || symbol
+      symbol: safeQuote.symbol || symbol,
+      price: safeQuote.regularMarketPrice || 0,
+      change: safeQuote.regularMarketChange || 0,
+      changePercent: safeQuote.regularMarketChangePercent || 0,
+      volume: safeQuote.regularMarketVolume || 0,
+      marketCap: safeQuote.marketCap,
+      peRatio: safeQuote.trailingPE,
+      dividendYield: safeQuote.dividendYield,
+      fiftyTwoWeekHigh: safeQuote.fiftyTwoWeekHigh,
+      fiftyTwoWeekLow: safeQuote.fiftyTwoWeekLow,
+      name: safeQuote.longName || safeQuote.shortName || symbol
     };
   } catch (error) {
     console.error(`Error fetching quote for ${symbol}:`, error);
@@ -73,8 +82,16 @@ export async function getStockQuote(symbol: string): Promise<StockData | null> {
 }
 
 export async function getMultipleStockQuotes(symbols: string[]): Promise<StockData[]> {
+  // Filter out invalid symbols first
+  const validSymbols = symbols.filter(symbol => symbol && symbol.trim() !== '');
+  
+  if (validSymbols.length === 0) {
+    console.warn('No valid symbols provided to getMultipleStockQuotes');
+    return [];
+  }
+  
   const quotes = await Promise.all(
-    symbols.map(symbol => getStockQuote(symbol))
+    validSymbols.map(symbol => getStockQuote(symbol))
   );
   
   return quotes.filter((quote): quote is StockData => quote !== null);
@@ -179,7 +196,9 @@ export async function fetchSP500Symbols(): Promise<string[]> {
       throw new Error('S&P 500 API response is not an array');
     }
     
-    const symbols: string[] = data.map((item: SP500Constituent) => item.Symbol);
+    const symbols: string[] = data
+      .map((item: SP500Constituent) => item.Symbol)
+      .filter((symbol: string) => symbol && symbol.trim() !== ''); // Filter out null/empty symbols
     
     if (symbols.length === 0) {
       throw new Error('No S&P 500 symbols found in API response');
