@@ -39,7 +39,7 @@ export interface ModelInfo {
 }
 
 // Configuration
-const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'https://market-brief.onrender.com'; // Update this with your deployed URL
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'https://your-new-render-url.onrender.com'; // Update this with your deployed URL
 
 // ML Service API client
 class MLPredictionService {
