@@ -21,12 +21,13 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000", 
+        "https://market-brief.vercel.app",
         "https://market-brief-o37dpzab3-victor-wus-projects-6704a109.vercel.app",
-        "https://market-brief-*.vercel.app",
-        "https://*.vercel.app"
+        "https://market-brief-git-main-victor-wus-projects-6704a109.vercel.app",
+        "*"  # Allow all origins for now - can restrict later
     ],  # Allow Vercel domains
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -84,6 +85,16 @@ async def health_check():
         "scaler_loaded": scaler is not None,
         "timestamp": datetime.now().isoformat()
     }
+
+@app.options("/predict-single")
+async def predict_single_options():
+    """Handle CORS preflight requests"""
+    return {"detail": "CORS preflight"}
+
+@app.get("/")
+async def root():
+    """Root endpoint"""
+    return {"message": "Finance ML Service", "status": "running", "docs": "/docs"}
 
 @app.get("/model-info")
 async def get_model_info():
@@ -160,6 +171,38 @@ async def predict_stock_movement(request: PredictionRequest):
 @app.post("/predict-single")
 async def predict_single(vix_value: float):
     """Simple endpoint for single VIX prediction"""
+    if model is None or scaler is None:
+        raise HTTPException(status_code=500, detail="ML models not loaded")
+    
+    try:
+        # Prepare features
+        features = np.array([[vix_value]])
+        features_scaled = scaler.transform(features)
+        
+        # Make prediction
+        prediction = model.predict(features_scaled)[0]
+        prediction_proba = model.predict_proba(features_scaled)[0]
+        confidence = prediction_proba[prediction]
+        
+        prediction_label = "bullish" if prediction == 1 else "bearish"
+        
+        return {
+            "prediction": int(prediction),
+            "prediction_label": prediction_label,
+            "confidence": float(confidence),
+            "probability_bullish": float(prediction_proba[1]),
+            "probability_bearish": float(prediction_proba[0]),
+            "vix_value": vix_value,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Single prediction error: {e}")
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+
+@app.get("/predict-single")
+async def predict_single_get(vix_value: float):
+    """GET endpoint for single VIX prediction using query parameters"""
     if model is None or scaler is None:
         raise HTTPException(status_code=500, detail="ML models not loaded")
     
