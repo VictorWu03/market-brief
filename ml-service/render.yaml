@@ -2,10 +2,14 @@ services:
   - type: web
     name: finance-ml-service
     env: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --upgrade pip setuptools wheel && pip install --no-cache-dir -r requirements-python311.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     rootDir: ml-service
     plan: free
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.7 
+        value: 3.11.7
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PIP_NO_CACHE_DIR
+        value: "1" 

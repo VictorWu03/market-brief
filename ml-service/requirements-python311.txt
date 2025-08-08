@@ -1,0 +1,28 @@
+# Optimized requirements for Python 3.11 deployment
+# Using versions that are known to work with Python 3.11
+
+# Core web framework
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+
+# Data processing - using pre-built wheels for Python 3.11
+numpy==1.26.4
+pandas==2.2.3
+
+# Machine learning - compatible with Python 3.11
+scikit-learn==1.5.2
+
+# Utilities
+joblib==1.4.2
+python-multipart==0.0.17
+pydantic==2.10.3
+requests==2.32.3
+python-dotenv==1.0.1
+
+# Build tools to prevent metadata generation issues
+setuptools==75.6.0
+wheel==0.45.1
+pip==24.3.1
+
+# Additional dependencies that might be needed
+typing-extensions==4.12.2
